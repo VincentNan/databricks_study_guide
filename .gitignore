@@ -1,0 +1,5 @@
+# Genie Agents are not supported in Git folders
+*.geniespace.json
+
+# Databricks internal
+.databricks/
