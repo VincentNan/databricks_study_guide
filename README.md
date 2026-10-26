@@ -1,5 +1,7 @@
 # databricks_study_guide
 
+Date: 10/26/2026
+
 A hands-on study repository for the **Databricks Certified Data Engineer Associate** exam. It covers the full medallion architecture — Bronze → Silver → Gold — with runnable study guides, labs, SQL queries, an SDP (Spark Declarative Pipelines) pipeline, a dashboard, a Genie agent, and an alert.
 
 All notebooks and queries target the **`lab_uc`** catalog in the workspace (schemas: `bronze`, `silver`, `gold`).
