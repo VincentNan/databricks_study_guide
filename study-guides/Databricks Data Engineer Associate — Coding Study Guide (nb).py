@@ -359,6 +359,74 @@ print("inferred schema:", evolving.schema.simpleString())
 
 # COMMAND ----------
 
+# DBTITLE 1,4.6 Structured Streaming .trigger() reference
+# MAGIC %md
+# MAGIC ## 4.6 Structured Streaming `.trigger()` — reference
+# MAGIC
+# MAGIC In Apache Spark Structured Streaming, the `.trigger()` command accepts **exactly one keyword parameter** at a time. You use these parameters to define how often and with what mechanism Spark evaluates your streaming query.
+# MAGIC
+# MAGIC The valid parameters for `.trigger()` are broken down below by execution strategy:
+# MAGIC
+# MAGIC ### 1. Micro-Batch Parameters (Default / Time-Based)
+# MAGIC
+# MAGIC * **`processingTime` (String):** Sets a fixed-interval timer for micro-batches. Spark checks your source for new data exactly at the specified frequency.
+# MAGIC   * Syntax: `.trigger(processingTime="10 seconds")` or `"5 minutes"`
+# MAGIC   * If you supply `processingTime="0 seconds"` (or leave `.trigger()` out entirely), Spark executes a new micro-batch immediately as soon as the previous one finishes.
+# MAGIC
+# MAGIC ### 2. Incremental Batch Parameters (One-Time Run)
+# MAGIC
+# MAGIC * **`availableNow` (Boolean):** The modern standard for scheduled batch ingestion. It instructs Spark to process all outstanding backlog data that has arrived since the last run, splitting massive datasets into multiple safely sized micro-batches before cleanly shutting down the cluster.
+# MAGIC   * Syntax: `.trigger(availableNow=True)`
+# MAGIC * **`once` (Boolean):** **Deprecated** in modern Databricks Runtime versions. Similar to `availableNow`, it processes raw data and shuts down, but it tries to swallow all backlog data into one single, massive micro-batch, risking Out-Of-Memory (OOM) errors.
+# MAGIC   * Syntax: `.trigger(once=True)`
+# MAGIC
+# MAGIC ### 3. Low-Latency Parameters (Continuous Routing)
+# MAGIC
+# MAGIC * **`continuous` (String):** Switches Spark from a traditional micro-batch architecture to a true continuous processing engine. It can achieve sub-millisecond latencies by streaming records continuously across memory buffers. The string parameter dictates how frequently Spark logs metadata checkpoints.
+# MAGIC   * Syntax: `.trigger(continuous="1 second")`
+# MAGIC   * **Exam Warning:** Continuous mode is highly restricted and does not support complex transformations like aggregations or multiple joins.
+# MAGIC
+# MAGIC ### Summary of Parameter Combinations
+# MAGIC
+# MAGIC | Parameter Name | Expected Type | Example Syntax | Intended Strategy |
+# MAGIC | --- | --- | --- | --- |
+# MAGIC | `processingTime` | str | `.trigger(processingTime='30 seconds')` | Standard production micro-batching |
+# MAGIC | `availableNow` | bool | `.trigger(availableNow=True)` | Cost-efficient scheduled cron jobs |
+# MAGIC | `once` | bool | `.trigger(once=True)` | Legacy batch-like ingestion (deprecated) |
+# MAGIC | `continuous` | str | `.trigger(continuous='100 milliseconds')` | Experimental ultra-low latency pipelines |
+# MAGIC
+# MAGIC > **Exam tip:** Pair `availableNow=True` with data-source options like `maxFilesPerTrigger` or `maxBytesPerTrigger` to safely throttle the amount of data your cluster processes at once.
+
+# COMMAND ----------
+
+# DBTITLE 1,4.7 Unity Catalog Privilege Rules
+# MAGIC %md
+# MAGIC ## 4.7 Unity Catalog Privilege Rules — exam reference
+# MAGIC
+# MAGIC * **OWNER:** Can do anything (read, write, modify schema, drop the schema, and change permissions).
+# MAGIC * **APPLY:** Can manage permissions (grant/revoke) on the target object, but gains no functional data access.
+# MAGIC * **USE SCHEMA:** A prerequisite permission required to interact with any object inside a schema, but it does not grant read/write access on its own.
+
+# COMMAND ----------
+
+# DBTITLE 1,4.8 Notebook Output Size Limits
+# MAGIC %md
+# MAGIC ## 4.8 Notebook Output Size Limits — exam reference
+# MAGIC
+# MAGIC The maximum notebook output size a job cluster supports before the notebook fails is **30 MB**.
+# MAGIC
+# MAGIC ### Key Exam Details & Limits to Remember
+# MAGIC
+# MAGIC * **Total Combined Output Limit:** The 30 MB limit applies to the cumulative sum of all cell outputs combined in a notebook task running on a job cluster. Exceeding this causes the run to be canceled and fail with an "output is too large" error.
+# MAGIC * **Individual Cell Output Limit:** An individual cell output is subject to its own default limit of **8 MB to 10 MB** depending on the specific runtime profile and configuration. In newer Databricks Runtimes (17.0+), individual cell sizes that overflow are gracefully truncated instead of instantly crashing the whole notebook, provided the collective notebook limit stays under 30 MB.
+# MAGIC * **Table Results Limit:** Tables displayed in notebook outputs are limited to **10,000 rows or 2 MB** (whichever is lower).
+# MAGIC
+# MAGIC ### Best Practice for the Exam
+# MAGIC
+# MAGIC If a data engineering workflow fails because it outputs too much verbose logging or large data profiles (like using loops with `.show()` or `print()`), the standard correction is to remove the visual display actions or refactor the pipeline to save the large validation datasets directly to disk as an HTML file or a Delta validation table rather than printing it to the notebook canvas.
+
+# COMMAND ----------
+
 # DBTITLE 1,5. Data cleaning — Bronze to Silver
 # MAGIC %md
 # MAGIC ## 5. Data cleaning — Bronze to Silver
