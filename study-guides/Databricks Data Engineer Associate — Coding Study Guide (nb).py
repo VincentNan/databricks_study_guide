@@ -131,11 +131,14 @@ display(spark.table("lab_uc.bronze.orders_raw"))
 # COMMAND ----------
 
 # DBTITLE 1,2.1 Reading tables — three equivalent ways
+from pyspark.testing import assertDataFrameEqual
 # All three read the same governed table as a DataFrame
 df1 = spark.table("lab_uc.bronze.orders_raw")
 df2 = spark.read.table("lab_uc.bronze.orders_raw")
-df3 = spark.sql("SELECT * FROM lab_uc.bronze.orders_raw")
+df3 = spark.sql("""SELECT * FROM lab_uc.bronze.orders_raw""")
 
+assertDataFrameEqual(df1, df2)
+assertDataFrameEqual(df3, df2)
 print("All equal:", df1.count() == df2.count() == df3.count())
 display(df1.limit(10))
 
@@ -403,9 +406,77 @@ print("inferred schema:", evolving.schema.simpleString())
 # MAGIC %md
 # MAGIC ## 4.7 Unity Catalog Privilege Rules — exam reference
 # MAGIC
-# MAGIC * **OWNER:** Can do anything (read, write, modify schema, drop the schema, and change permissions).
-# MAGIC * **APPLY:** Can manage permissions (grant/revoke) on the target object, but gains no functional data access.
-# MAGIC * **USE SCHEMA:** A prerequisite permission required to interact with any object inside a schema, but it does not grant read/write access on its own.
+# MAGIC In Databricks Unity Catalog, privileges dictate what actions a user, service principal, or group can perform on a specific securable object.
+# MAGIC
+# MAGIC The complete list of Unity Catalog privileges, categorized by the type of object they control, is outlined below:
+# MAGIC
+# MAGIC ### 1. General & High-Level Privileges
+# MAGIC
+# MAGIC | Privilege | Description |
+# MAGIC | --- | --- |
+# MAGIC | `ALL PRIVILEGES` | Automatically grants all applicable capabilities on a securable object and its child objects (catalogs, schemas, tables, views, materialized views, volumes, functions, connections, credentials). |
+# MAGIC | `APPLY TAG` | Allows applying or managing tags on an object. |
+# MAGIC | `BROWSE` | Allows viewing metadata and objects in Catalog Explorer without reading raw underlying data. |
+# MAGIC | `MANAGE` | Full administrative control over an object, including the ability to grant and revoke privileges. |
+# MAGIC | `READ METADATA` | Grants read-only visibility into an object's metadata without modification or data access rights. |
+# MAGIC | `APPLY` | Allows a user to grant and revoke privileges on an object without granting data read/write rights. |
+# MAGIC
+# MAGIC
+# MAGIC ### 2. Container & Navigation Privileges (Catalog & Schema)
+# MAGIC
+# MAGIC To interact with any data asset inside a catalog or schema, users require these mandatory usage prerequisites:
+# MAGIC
+# MAGIC | Privilege | Level | Description |
+# MAGIC | --- | --- | --- |
+# MAGIC | `USE CATALOG` | Catalog | Required to access a catalog and traverse down to its schemas. |
+# MAGIC | `USE SCHEMA` | Schema | Required to access a schema and traverse down to its tables, views, or volumes. |
+# MAGIC | `CREATE CATALOG` | Metastore | Allows creating a new catalog. |
+# MAGIC | `CREATE SCHEMA` | Catalog | Allows creating schemas within a catalog. |
+# MAGIC | `CREATE TABLE` / `CREATE VIEW` / `CREATE MATERIALIZED VIEW` / `CREATE VOLUME` / `CREATE FUNCTION` / `CREATE MODEL` | Schema / Catalog | Allows creating those specific child assets inside the container. |
+# MAGIC
+# MAGIC ### 3. Data & Table Privileges (Table, View, Materialized View)
+# MAGIC
+# MAGIC | Privilege | Description |
+# MAGIC | --- | --- |
+# MAGIC | `SELECT` | Read data from a table or view. |
+# MAGIC | `MODIFY` | Composite write privilege allowing data changes (covers inserts, updates, and deletes). |
+# MAGIC | `INSERT` | Add new rows to a table. |
+# MAGIC | `UPDATE` | Modify existing rows in a table. |
+# MAGIC | `DELETE` | Remove rows from a table. |
+# MAGIC | `REFRESH` | Refresh a materialized view or streaming table. |
+# MAGIC
+# MAGIC ### 4. Storage & Infrastructure Privileges (Volume, External Location, Credentials)
+# MAGIC
+# MAGIC | Privilege | Level | Description |
+# MAGIC | --- | --- | --- |
+# MAGIC | `READ VOLUME` | Volume | Read or list files inside a Unity Catalog volume. |
+# MAGIC | `WRITE VOLUME` | Volume | Create, update, or delete files inside a Unity Catalog volume. |
+# MAGIC | `CREATE EXTERNAL LOCATION` | Metastore | Allows creating external storage location definitions. |
+# MAGIC | `CREATE STORAGE CREDENTIAL` / `CREATE SERVICE CREDENTIAL` | Metastore | Allows registering cloud access credentials. |
+# MAGIC | `ACCESS` / `USE SERVICE CREDENTIAL` | — | Allows using a stored credential to interact with external cloud services. |
+# MAGIC
+# MAGIC ### 5. Code, Functions, Models & Lakehouse Federation
+# MAGIC
+# MAGIC | Privilege | Level | Description |
+# MAGIC | --- | --- | --- |
+# MAGIC | `EXECUTE` | Function / Procedure / Model | Run a UDF, stored procedure, or score an MLflow model. |
+# MAGIC | `CREATE CONNECTION` / `CREATE PROVIDER` / `CREATE RECIPIENT` / `CREATE SHARE` | Metastore | Used for Lakehouse Federation and Delta Sharing governance. |
+# MAGIC | `USE SHARE` / `USE PROVIDER` / `USE RECIPIENT` / `SET SHARE PERMISSION` | Metastore | Manage data sharing and Delta Sharing entities. |
+# MAGIC | `CREATE CLEAN ROOM` / `USE MARKETPLACE ASSETS` | Metastore | Control access to clean rooms and Databricks Marketplace. |
+# MAGIC
+# MAGIC ### Privilege Inheritance Flow
+# MAGIC
+# MAGIC Privileges granted on a parent object flow **downward** to its children:
+# MAGIC
+# MAGIC ```
+# MAGIC CATALOG  →  SCHEMA  →  TABLE / VIEW / VOLUME / FUNCTION
+# MAGIC ```
+# MAGIC
+# MAGIC * `USE CATALOG` on a catalog + `USE SCHEMA` on a schema are **both required** to access any table inside.
+# MAGIC * `SELECT` on a catalog grants `SELECT` on all tables in all schemas within it.
+# MAGIC * `OWNER` on a catalog makes the user owner of all child schemas and tables.
+# MAGIC
+# MAGIC > **Exam tip:** `APPLY` lets you manage permissions (grant/revoke) on an object but grants **no data access**. `USE SCHEMA` is a **prerequisite** to interact with any object inside a schema, but it does **not** grant read/write access on its own — you still need `SELECT` or `MODIFY`.
 
 # COMMAND ----------
 
@@ -424,6 +495,128 @@ print("inferred schema:", evolving.schema.simpleString())
 # MAGIC ### Best Practice for the Exam
 # MAGIC
 # MAGIC If a data engineering workflow fails because it outputs too much verbose logging or large data profiles (like using loops with `.show()` or `print()`), the standard correction is to remove the visual display actions or refactor the pipeline to save the large validation datasets directly to disk as an HTML file or a Delta validation table rather than printing it to the notebook canvas.
+
+# COMMAND ----------
+
+# DBTITLE 1,4.9 Databricks Default Values
+# MAGIC %md
+# MAGIC ## 4.9 Databricks Default Values — exam reference
+# MAGIC
+# MAGIC For the certification exam and real-world operations, knowing the out-of-the-box defaults for table properties, histories, and system resources is essential. The most common default values are broken down below by category.
+# MAGIC
+# MAGIC ### 1. Delta Table & Data Retention Defaults
+# MAGIC
+# MAGIC These settings regulate data storage, time-travel history, and file cleanup intervals.
+# MAGIC
+# MAGIC | Setting / Property | Default | Description |
+# MAGIC | --- | --- | --- |
+# MAGIC | `delta.deletedFileRetentionDuration` | `7 days` | Data file age threshold used by `VACUUM`. Files logically removed from the transaction log longer than this window are permanently deleted. |
+# MAGIC | `delta.logRetentionDuration` | `30 days` | Controls how long the transaction log (JSON files) for a table is kept for time travel. |
+# MAGIC | Managed Table Purge Window | `7 days` | After `DROP TABLE` on a UC managed table, underlying cloud storage files are held in a recovery pool for 7 days before permanent deletion. |
+# MAGIC | `delta.enableChangeDataFeed` | `false` | Whether row-level mutations are recorded downstream via the Change Data Feed (CDF) mechanism. |
+# MAGIC | `delta.enableDeletionVectors` | `true` (modern runtimes) | Enables soft-deletes (deletion vectors) to avoid rewriting entire Parquet files during minor updates. |
+# MAGIC | `delta.appendOnly` | `false` | If `true`, restricts the table to insert-only commands, blocking `UPDATE`, `DELETE`, or `MERGE`. |
+# MAGIC
+# MAGIC How to change each Delta table property:
+# MAGIC
+# MAGIC ```sql
+# MAGIC -- deletedFileRetentionDuration (default 7 days → 14 days)
+# MAGIC ALTER TABLE lab_uc.bronze.orders_raw
+# MAGIC   SET TBLPROPERTIES ('delta.deletedFileRetentionDuration' = 'interval 14 days');
+# MAGIC
+# MAGIC -- logRetentionDuration (default 30 days → 90 days)
+# MAGIC ALTER TABLE lab_uc.bronze.orders_raw
+# MAGIC   SET TBLPROPERTIES ('delta.logRetentionDuration' = 'interval 90 days');
+# MAGIC
+# MAGIC -- enableChangeDataFeed (default false → true)
+# MAGIC ALTER TABLE lab_uc.bronze.orders_raw
+# MAGIC   SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true');
+# MAGIC
+# MAGIC -- enableDeletionVectors (default true → false)
+# MAGIC ALTER TABLE lab_uc.bronze.orders_raw
+# MAGIC   SET TBLPROPERTIES ('delta.enableDeletionVectors' = 'false');
+# MAGIC
+# MAGIC -- appendOnly (default false → true — blocks UPDATE/DELETE/MERGE)
+# MAGIC ALTER TABLE lab_uc.bronze.orders_raw
+# MAGIC   SET TBLPROPERTIES ('delta.appendOnly' = 'true');
+# MAGIC ```
+# MAGIC
+# MAGIC > **Exam tip:** `VACUUM` will refuse to delete files newer than the retention duration. You can lower it (e.g. to 0 hours for a demo), but never raise it above the retention without understanding the risk of breaking time-travel queries.
+# MAGIC
+# MAGIC > **Note:** The Managed Table Purge Window (7 days after `DROP TABLE`) is a system-level setting — it cannot be changed by users.
+# MAGIC
+# MAGIC ### 2. Operational History & Tracking Defaults
+# MAGIC
+# MAGIC These values specify how long metadata, job runs, and audit footprints persist.
+# MAGIC
+# MAGIC | Component | Default | Description |
+# MAGIC | --- | --- | --- |
+# MAGIC | Workflows & Pipelines Run History | `60 days` | Databricks retains execution run logs, step histories, and diagnostic statuses for Jobs and Lakeflow pipelines. |
+# MAGIC | System Tables Baseline | `395 days` | Standard accounts include ~13 months of accounting, audit, lineage, and operational telemetry. |
+# MAGIC | Notebook Output Result Limit | `10,000 rows` or `2 MB` | The display ceiling when fetching preview tables in notebook cell outputs. |
+# MAGIC | Cumulative Notebook Size | `30 MB` | The hard failure threshold for total cell outputs on Job Compute before the task is canceled. |
+# MAGIC
+# MAGIC > **Note:** These retention limits are system-managed defaults set by Databricks and cannot be changed by users via SQL or notebook configuration.
+# MAGIC
+# MAGIC ### 3. Engine, File & Execution Tuning Defaults
+# MAGIC
+# MAGIC These properties steer runtime behavior, schema generation, and performance.
+# MAGIC
+# MAGIC | Parameter | Default | Description |
+# MAGIC | --- | --- | --- |
+# MAGIC | `parquet.compression.codec` | `ZSTD` | The default file compression codec for Databricks and Unity Catalog table writes. |
+# MAGIC | `dataSkippingNumIndexedCols` | `32` | Maximum number of columns for which Databricks collects statistics (min, max, null counts) for data-skipping optimizations. |
+# MAGIC | `ANSI_MODE` | `TRUE` | Enforces ANSI SQL compliance — causes runtime errors (e.g. overflow) rather than returning NULL on invalid casts. |
+# MAGIC | `MAX_FILE_PARTITION_BYTES` | `128 MB` | Default maximum partition size when packing external table data into memory. |
+# MAGIC | `USE_CACHED_RESULT` | `TRUE` | Enables the Databricks SQL result cache for identical query re-evaluations. |
+# MAGIC
+# MAGIC ### Quick-Reference Cheat Sheet
+# MAGIC
+# MAGIC | Default | Value |
+# MAGIC | --- | --- |
+# MAGIC | VACUUM retention | 7 days |
+# MAGIC | Time-travel log retention | 30 days |
+# MAGIC | Managed table drop recovery | 7 days |
+# MAGIC | Job / pipeline run history | 60 days |
+# MAGIC | System tables retention | ~395 days |
+# MAGIC | Notebook total output limit (jobs) | 30 MB |
+# MAGIC | Table display limit | 10K rows / 2 MB |
+# MAGIC | Compression codec | ZSTD |
+# MAGIC | Data-skipping indexed columns | 32 |
+# MAGIC | Partition max bytes | 128 MB |
+# MAGIC
+# MAGIC How to change each execution parameter:
+# MAGIC
+# MAGIC ```sql
+# MAGIC -- parquet.compression.codec (default ZSTD → snappy)
+# MAGIC SET parquet.compression.codec = 'snappy';
+# MAGIC
+# MAGIC -- dataSkippingNumIndexedCols (default 32 → 64) — table property
+# MAGIC ALTER TABLE lab_uc.bronze.orders_raw
+# MAGIC   SET TBLPROPERTIES ('dataSkippingNumIndexedCols' = '64');
+# MAGIC
+# MAGIC -- ANSI_MODE (default TRUE → false)
+# MAGIC SET ANSI_MODE = false;
+# MAGIC
+# MAGIC -- spark.sql.files.maxPartitionBytes (default 128 MB → 256 MB)
+# MAGIC SET spark.sql.files.maxPartitionBytes = 268435456;
+# MAGIC
+# MAGIC -- USE_CACHED_RESULT (default TRUE → false)
+# MAGIC SET use_cached_result = false;
+# MAGIC ```
+# MAGIC
+# MAGIC Or equivalently in PySpark:
+# MAGIC
+# MAGIC ```python
+# MAGIC spark.conf.set("parquet.compression.codec", "snappy")
+# MAGIC spark.conf.set("spark.sql.files.maxPartitionBytes", "268435456")
+# MAGIC spark.conf.set("ANSI_MODE", "false")
+# MAGIC spark.conf.set("use_cached_result", "false")
+# MAGIC ```
+# MAGIC
+# MAGIC > **Exam tip:** If a question asks what happens after `DROP TABLE` on a managed table, the key detail is the 7-day recovery window — the data is not immediately deleted. For `VACUUM`, remember it will not remove files newer than `delta.deletedFileRetentionDuration` (default 7 days) even if you request `VACUUM` with a shorter interval.
+# MAGIC >
+# MAGIC > **Key distinction:** Delta table properties (`delta.*`, `dataSkippingNumIndexedCols`) are set per-table via `ALTER TABLE SET TBLPROPERTIES`. Engine/session parameters (`ANSI_MODE`, `USE_CACHED_RESULT`, `parquet.compression.codec`, `spark.sql.files.maxPartitionBytes`) are set per-session via `SET` or `spark.conf.set()` and reset when the cluster restarts.
 
 # COMMAND ----------
 
@@ -516,7 +709,7 @@ display(
     .withColumnRenamed("customer_name", "name")  # rename
     .withColumn("name_parts", F.split(F.col("name"), " "))  # split -> array
     .withColumn("first_name", F.col("name_parts").getItem(0))
-    .drop("name_parts")  # drop column
+    #.drop("name_parts")  # drop column
     .withColumn("region_lower", F.col("region").cast("string"))  # cast
     .orderBy(F.col("customer_id").desc())  # sort
 )
@@ -706,6 +899,7 @@ display(summary)
 from pyspark.sql.window import Window
 
 updates = spark.table("lab_uc.bronze.customer_updates")
+display(updates)
 
 w = Window.partitionBy("customer_id").orderBy(
     F.col("updated_at").desc(), F.col("sequence_id").desc()
@@ -719,6 +913,13 @@ latest = (
 )
 
 display(latest)
+
+result_df = updates.withColumn(
+    "previous_name", F.lag("customer_name", offset=1).over(w)
+).withColumn(
+    "next_name", F.lead("customer_name", offset=1).over(w)
+)
+result_df.show()
 
 # Function comparison:
 #   ROW_NUMBER() -> unique sequence number (ties broken arbitrarily)
@@ -803,7 +1004,7 @@ display(flattened)
 
 # DBTITLE 1,8.2 SQL — LATERAL VIEW EXPLODE
 # MAGIC %sql
-# MAGIC -- 8.2 SQL — LATERAL VIEW EXPLODE
+# MAGIC -- 8.2 SQL — LATERAL VIEW EXPLODE - legacy Hive specific
 # MAGIC SELECT
 # MAGIC   order_id,
 # MAGIC   customer_id,
@@ -812,6 +1013,17 @@ display(flattened)
 # MAGIC FROM
 # MAGIC   lab_uc.bronze.orders_nested
 # MAGIC   LATERAL VIEW EXPLODE(items) exploded AS item;
+# MAGIC
+# MAGIC --Modern Alternative: The LATERAL Join (Recommended)
+# MAGIC SELECT  order_id,
+# MAGIC   customer_id,
+# MAGIC   item.product_id,
+# MAGIC   item.quantity
+# MAGIC FROM 
+# MAGIC   lab_uc.bronze.orders_nested,
+# MAGIC LATERAL explode(items) as t(item);
+# MAGIC
+# MAGIC
 
 # COMMAND ----------
 
